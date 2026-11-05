@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f8f9f5">
+  <meta name="description" content="Answer：整理问题，主动回忆。电脑编写，手机复习，支持 LaTeX 公式。">
+  <title>Answer · 让知识有回响</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="/vendor/katex/katex.min.js"></script>
+  <script defer src="/vendor/katex/contrib/auto-render.min.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="目录导航">
+      <a class="brand" href="/" aria-label="Answer 首页"><span class="brand-mark">a<span>·</span></span><span>Answer<small>让知识有回响</small></span></a>
+      <div class="sidebar-content" id="sidebar"></div>
+      <div class="sidebar-footer"><span class="small-spark">✳</span><p>每一个问题，<br>都是理解的开始。</p></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <a class="mobile-brand" href="/"><span class="brand-mark">a<span>·</span></span>Answer</a>
+        <div class="workspace-label" id="workspace-label">个人学习空间</div>
+        <nav class="mode-switch" aria-label="页面模式">
+          <a href="/" id="study-link">学习空间</a>
+          <a href="/admin" id="admin-link">内容管理</a>
+        </nav>
+        <span class="topbar-note" id="topbar-note">慢慢来，理解比记住更重要</span>
+      </header>
+      <main id="main" tabindex="-1"><div class="loading" role="status"><span class="spinner"></span>正在打开学习空间…</div></main>
+      <footer class="page-footer"><span>Answer</span><span>保持好奇，持续积累。</span></footer>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="modal" aria-labelledby="modal-title"></dialog>
+  <noscript><p class="noscript">请开启浏览器 JavaScript，以查看和编辑问答。</p></noscript>
+</body>
+</html>

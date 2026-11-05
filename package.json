@@ -1,0 +1,18 @@
+{
+  "name": "answer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "目录式问答学习工具：电脑编写，手机复习，支持 LaTeX。",
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/dev.js",
+    "check": "node --check backend/server.js && node --check backend/store.js && node --check backend/dev.js && node --check public/app.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "5.3.0",
+    "katex": "0.19.1"
+  }
+}
