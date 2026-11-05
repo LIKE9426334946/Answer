@@ -138,15 +138,18 @@ function empty(title, message, action = '') {
 }
 function renderOverview() {
   const questions = state.data.projects.reduce((sum, entry) => sum + entry.questions.length, 0);
-  main.innerHTML = `<section class="page-heading overview-heading"><div><span class="eyebrow">A LITTLE EVERY DAY</span><h1>${isAdmin ? '整理问题，积累理解。' : '温故，然后知新。'}</h1><p>${isAdmin ? '把值得思考的问题，整理成自己的知识。' : '选一个目录，从一个问题开始。先思考，再看答案。'}</p></div>${isAdmin ? `<button class="button primary" data-action="add-folder">${icon('plus')}新建目录</button>` : `<div class="hero-emblem" aria-hidden="true">${icon('book')}<span>学而时习之</span></div>`}</section>
-    <div class="stats-row"><span><strong>${state.data.directories.length}</strong> 个目录</span><i></i><span><strong>${state.data.projects.length}</strong> 个项目</span><i></i><span><strong>${questions}</strong> 组问答</span></div>
-    <section class="directory-section"><div class="section-heading"><h2>我的目录 <span>${String(state.data.directories.length).padStart(2, '0')}</span></h2><span class="muted">${isAdmin ? '在目录中编写你的学习内容' : '让零散的知识，慢慢连成线'}</span></div>
+  main.innerHTML = `<div class="stats-row"><span><strong>${state.data.directories.length}</strong> 个目录</span><i></i><span><strong>${state.data.projects.length}</strong> 个项目</span><i></i><span><strong>${questions}</strong> 组问答</span></div>
+    <section class="directory-section"><div class="section-heading"><h1>我的目录 <span>${String(state.data.directories.length).padStart(2, '0')}</span></h1>${isAdmin ? `<button class="button primary" data-action="add-folder">${icon('plus')}新建目录</button>` : ''}</div>
     ${state.data.directories.length ? `<div class="directory-grid">${state.data.directories.map((entry, index) => {
       const projects = projectsIn(entry.id);
       const total = projects.reduce((sum, project) => sum + project.questions.length, 0);
-      return `<button class="directory-card tone-${index % 3}" data-action="folder" data-id="${entry.id}"><div class="directory-card-top"><span class="folder-symbol">${icon('folder')}</span><span class="card-index">${number(index)}</span></div><h3>${esc(entry.name)}</h3><p>${projects.length} 个项目 <span>·</span> ${total} 组问答</p><div class="directory-card-bottom"><span>${isAdmin ? '管理目录' : '开始学习'}</span>${icon('arrow')}</div></button>`;
-    }).join('')}${isAdmin ? `<button class="directory-card add-directory-card" data-action="add-folder"><span class="add-circle">${icon('plus')}</span><strong>创建新目录</strong><span>给新的知识留一个位置</span></button>` : ''}</div>` : empty('从第一个目录开始', isAdmin ? '创建目录，再添加学习项目和问答。' : '还没有学习内容，请先在电脑端的「内容管理」中添加。', isAdmin ? `<button class="button primary" data-action="add-folder">${icon('plus')}新建目录</button>` : '<a class="button secondary desktop-only" href="/admin">前往内容管理</a>')}
-    </section><div class="quiet-note"><span>✳</span><div><strong>给思考留一点时间</strong><p>在答案揭晓之前，试着用自己的话回答。</p></div></div>`;
+      return `<button type="button" class="directory-card tone-${index % 3}" data-action="folder" data-id="${entry.id}">
+        <span class="folder-symbol">${icon('folder')}</span>
+        <span class="directory-summary"><strong>${esc(entry.name)}</strong><small>${projects.length} 个项目 · ${total} 组问答</small></span>
+        <span class="directory-action">${isAdmin ? '管理目录' : '开始学习'}${icon('arrow')}</span>
+      </button>`;
+    }).join('')}${isAdmin ? `<button type="button" class="directory-card add-directory-card" data-action="add-folder">${icon('plus')}创建新目录</button>` : ''}</div>` : empty('从第一个目录开始', isAdmin ? '创建目录，再添加学习项目和问答。' : '还没有学习内容，请先在电脑端的「内容管理」中添加。', isAdmin ? `<button class="button primary" data-action="add-folder">${icon('plus')}新建目录</button>` : '<a class="button secondary desktop-only" href="/admin">前往内容管理</a>')}
+    </section>`;
 }
 function renderFolder() {
   const folder = folderById(state.folder);
