@@ -2,7 +2,12 @@
 const isAdmin = location.pathname.startsWith('/admin');
 const main = document.querySelector('#main');
 const sidebar = document.querySelector('#sidebar');
-const state = { data: null, folder: null, project: null, draft: null, dirty: false, saving: false, search: '' };
+const state = { data: null, folder: null, project: null, draft: null, dirty: false, saving: false, search: '', previewHidden: false };
+const previewHiddenKey = 'answer.previewHidden';
+if (isAdmin) {
+  try { state.previewHidden = localStorage.getItem(previewHiddenKey) === 'true'; }
+  catch { /* The toggle still works when browser storage is unavailable. */ }
+}
 let activeHash = location.hash;
 let toastTimer;
 let previewTimer;
@@ -192,8 +197,8 @@ function markDirty() {
 }
 function renderEditor() {
   const draft = state.draft;
-  main.innerHTML = `${breadcrumb()}<div class="editor-heading"><div><span class="eyebrow">MAKE KNOWLEDGE YOUR OWN</span><h1>${draft.id ? '编辑学习项目' : '新建学习项目'}</h1></div><div class="editor-heading-actions">${draft.id ? `<button class="icon-button outlined" data-action="delete-project" aria-label="删除项目" title="删除项目">${icon('trash')}</button>` : ''}<button class="button secondary" data-action="close-editor">返回目录</button></div></div>
-    <form id="project-form"><div class="editor-layout"><div class="editor-fields"><section class="editor-card"><div class="editor-section-title"><span>01</span><h2>项目内容</h2></div>
+  main.innerHTML = `${breadcrumb()}<div class="editor-heading"><div><span class="eyebrow">MAKE KNOWLEDGE YOUR OWN</span><h1>${draft.id ? '编辑学习项目' : '新建学习项目'}</h1></div><div class="editor-heading-actions"><button type="button" class="button secondary" id="toggle-preview" data-action="toggle-preview" aria-controls="study-preview" aria-expanded="${!state.previewHidden}">${icon('eye')}${state.previewHidden ? '显示预览' : '隐藏预览'}</button>${draft.id ? `<button class="icon-button outlined" data-action="delete-project" aria-label="删除项目" title="删除项目">${icon('trash')}</button>` : ''}<button class="button secondary" data-action="close-editor">返回目录</button></div></div>
+    <form id="project-form"><div class="editor-layout${state.previewHidden ? ' preview-hidden' : ''}"><div class="editor-fields"><section class="editor-card"><div class="editor-section-title"><span>01</span><h2>项目内容</h2></div>
       <label class="field-label" for="project-title">项目名称 <span class="required">*</span></label><input id="project-title" data-field="title" maxlength="120" required placeholder="给这个学习项目起一个名字" value="${esc(draft.title)}">
       <label class="field-label" for="project-directory">所属目录</label><select id="project-directory" data-field="directoryId">${state.data.directories.map(entry => `<option value="${entry.id}" ${entry.id === draft.directoryId ? 'selected' : ''}>${esc(entry.name)}</option>`).join('')}</select>
       <label class="field-label" for="project-description">问题描述 <span class="optional">选填</span></label><textarea id="project-description" data-field="description" rows="5" maxlength="20000" placeholder="介绍背景、已知条件或需要思考的内容，显示在所有问答上方。">${esc(draft.description)}</textarea>
@@ -201,7 +206,7 @@ function renderEditor() {
       <div class="editor-questions-heading"><div class="editor-section-title"><span>02</span><h2>问题与答案</h2></div><span id="question-count" class="muted">${draft.questions.length} 组问答</span></div>
       <div id="question-editors"></div><button class="add-question" type="button" data-action="add-question">${icon('plus')}添加一组问答</button>
       <div class="editor-save-bar"><span id="save-status" class="${state.dirty ? 'unsaved' : ''}">${state.dirty ? '有未保存的修改' : draft.id ? '已保存' : '填写后保存到学习空间'}</span><button class="button primary" type="submit" id="save-project">${icon('check')}保存项目</button></div><p id="save-error" class="inline-error" role="alert" hidden></p></div>
-      <aside class="preview-panel"><div class="preview-heading"><span>${icon('eye')}学习预览</span><span class="preview-dot">实时更新</span></div><div id="live-preview"></div><p class="preview-footnote">手机端默认隐藏答案，点击后展开。</p></aside></div></form>`;
+      <aside class="preview-panel" id="study-preview" ${state.previewHidden ? 'hidden' : ''}><div class="preview-heading"><span>${icon('eye')}学习预览</span><span class="preview-dot">实时更新</span></div><div id="live-preview"></div><p class="preview-footnote">手机端默认隐藏答案，点击后展开。</p></aside></div></form>`;
   renderQuestionEditors();
   renderPreview();
 }
@@ -215,7 +220,7 @@ function renderQuestionEditors() {
 }
 function renderPreview() {
   const container = document.querySelector('#live-preview');
-  if (!container || !state.draft) return;
+  if (!container || !state.draft || state.previewHidden) return;
   const opened = new Set([...container.querySelectorAll('details')].flatMap((element, index) => element.open ? [index] : []));
   const draft = state.draft;
   container.innerHTML = `<div class="preview-project-title">${esc(draft.title || '学习项目名称')}</div>${draft.description ? `<div class="preview-description"><span class="description-label">问题描述</span>${rich(draft.description)}</div>` : '<p class="preview-placeholder">问题描述会显示在这里。</p>'}<div class="preview-questions">${questionsMarkup(draft.questions, true)}</div>`;
@@ -248,6 +253,17 @@ async function handleAction(button) {
   if (action === 'folder') return navigate(button.dataset.id, null);
   if (action === 'project') return navigate(state.folder, button.dataset.id);
   if (!isAdmin || state.saving) return;
+  if (action === 'toggle-preview') {
+    state.previewHidden = !state.previewHidden;
+    document.querySelector('#study-preview').hidden = state.previewHidden;
+    document.querySelector('.editor-layout').classList.toggle('preview-hidden', state.previewHidden);
+    button.setAttribute('aria-expanded', String(!state.previewHidden));
+    button.innerHTML = `${icon('eye')}${state.previewHidden ? '显示预览' : '隐藏预览'}`;
+    try { localStorage.setItem(previewHiddenKey, String(state.previewHidden)); }
+    catch { /* Keep the current page's preference when persistence is unavailable. */ }
+    if (!state.previewHidden) renderPreview();
+    return;
+  }
   if (action === 'add-folder') {
     if (!(await canLeave())) return;
     const name = await modal({ title: '创建一个新目录', value: '', confirm: '创建目录' });
