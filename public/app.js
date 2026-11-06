@@ -169,8 +169,7 @@ function renderProjectList() {
     container.innerHTML = all.length ? empty('没有找到匹配项目', '试试其他关键词。') : empty('这里还没有学习项目', isAdmin ? '添加一段问题描述，再围绕它编写多组问答。' : '这个目录的内容正在等待整理。', isAdmin ? `<button class="button primary" data-action="new-project">${icon('plus')}添加第一个项目</button>` : '');
     return;
   }
-  container.innerHTML = `<div class="project-list">${projects.map(project => `<button class="project-row" data-action="project" data-id="${project.id}"><span class="project-number">${number(all.indexOf(project))}</span><span class="project-summary"><strong>${esc(project.title)}</strong><span class="project-description">${rich(project.description || project.questions[0]?.question || '')}</span><span class="project-meta"><span>${project.questions.length} 组问答</span><span>更新于 ${esc(date(project.updatedAt))}</span></span></span><span class="row-action">${isAdmin ? '编辑项目' : '开始学习'}${icon('arrow')}</span></button>`).join('')}</div>`;
-  math(container);
+  container.innerHTML = `<div class="project-list">${projects.map(project => `<button class="project-row" data-action="project" data-id="${project.id}"><span class="project-number">${number(all.indexOf(project))}</span><span class="project-title">${esc(project.title)}</span></button>`).join('')}</div>`;
 }
 function questionsMarkup(questions, preview = false) {
   return questions.map((entry, index) => `<article class="question-card"><div class="question-top"><span class="question-label">问题 ${number(index)}</span><span class="question-dot"></span></div><div class="question-text">${rich(entry.question || (preview ? '在左侧输入问题…' : ''))}</div>
