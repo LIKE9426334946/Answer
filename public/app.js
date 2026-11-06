@@ -177,10 +177,12 @@ function questionsMarkup(questions, preview = false) {
     <details class="answer-disclosure"><summary><span class="show-answer">${icon('eye')}点击查看答案</span><span class="hide-answer">${icon('check')}答案已展开 · 点击收起</span>${icon('down')}</summary><div class="answer-content"><span class="answer-label">参考答案</span>${rich(entry.answer || (preview ? '在左侧输入答案…' : ''))}</div></details></article>`).join('');
 }
 function renderStudy(project) {
+  const projects = projectsIn(project.directoryId);
+  const nextProject = projects[projects.findIndex(entry => entry.id === project.id) + 1];
   main.innerHTML = `${breadcrumb()}<div class="study-layout"><div class="study-content"><header class="study-heading"><span class="eyebrow">LEARN · THINK · UNDERSTAND</span><h1>${esc(project.title)}</h1><div class="study-meta"><span>${icon('book')}${project.questions.length} 组问答</span><span>更新于 ${esc(date(project.updatedAt))}</span></div></header>
     ${project.description ? `<section class="description-card"><div class="description-label"><span></span>问题描述</div>${rich(project.description)}</section>` : ''}
     <div class="questions-heading"><h2>思考与回答</h2><span id="revealed-count" aria-live="polite">已查看 0 / ${project.questions.length}</span></div><div class="questions-list">${questionsMarkup(project.questions)}</div>
-    <div class="study-end"><span>— 每一次回忆，都让理解更深一点 —</span><button class="button secondary" data-action="folder" data-id="${project.directoryId}">${icon('back')}返回目录</button></div></div><aside class="study-aside"><span class="small-spark">✳</span><h3>先想一想，<br>再揭晓答案。</h3><p>不急着往下翻。<br>试着在心里说出答案，<br>再看看自己的理解。</p><div class="aside-divider"></div><span class="aside-small">一次一个问题<br>一点一滴积累</span></aside></div>`;
+    <div class="study-end"><span>— 每一次回忆，都让理解更深一点 —</span><nav class="study-navigation" aria-label="项目导航"><button class="button secondary" data-action="folder" data-id="${project.directoryId}">${icon('back')}返回目录</button><button class="button primary" ${nextProject ? `data-action="project" data-id="${nextProject.id}"` : 'disabled title="已是当前目录的最后一个项目"'}>下一个${icon('arrow')}</button></nav></div></div><aside class="study-aside"><span class="small-spark">✳</span><h3>先想一想，<br>再揭晓答案。</h3><p>不急着往下翻。<br>试着在心里说出答案，<br>再看看自己的理解。</p><div class="aside-divider"></div><span class="aside-small">一次一个问题<br>一点一滴积累</span></aside></div>`;
   math(main);
 }
 function blankQuestion() { return { question: '', answer: '' }; }
