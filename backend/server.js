@@ -3,14 +3,27 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStore, AppError, text, projectFields } from './store.js';
+import { configuredDataDirectory, createAdminAuth, SESSION_DURATION } from './admin-auth.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const publicDirectory = path.join(root, 'public');
 
-export async function createApp({ dataDirectory = process.env.DATA_DIR || path.join(root, 'data') } = {}) {
+const sessionCookie = 'answer_admin_session';
+
+function sessionToken(req) {
+  return req.get('cookie')?.match(/(?:^|;\s*)answer_admin_session=([a-f0-9]{64})(?:;|$)/)?.[1];
+}
+
+function cookieOptions(req) {
+  return { httpOnly: true, sameSite: 'lax', secure: req.secure, path: '/' };
+}
+
+export async function createApp({ dataDirectory = configuredDataDirectory(), now = Date.now } = {}) {
   const store = await createStore(dataDirectory);
+  const auth = createAdminAuth(dataDirectory, now);
   const app = express();
   app.disable('x-powered-by');
+  app.set('trust proxy', 'loopback');
   app.use((req, res, next) => {
     res.set({
       'X-Content-Type-Options': 'nosniff',
@@ -26,13 +39,36 @@ export async function createApp({ dataDirectory = process.env.DATA_DIR || path.j
       const origin = req.get('origin');
       let invalidOrigin = false;
       if (origin) {
-        try { invalidOrigin = new URL(origin).host !== req.get('host'); }
+        try { invalidOrigin = new URL(origin).origin !== new URL(`${req.protocol}://${req.get('host')}`).origin; }
         catch { invalidOrigin = true; }
       }
       if (invalidOrigin || req.get('sec-fetch-site') === 'cross-site') {
         return next(new AppError(403, '不允许跨站修改内容。'));
       }
       if (!req.is('application/json')) return next(new AppError(415, '请求需要使用 JSON 格式。'));
+    }
+    next();
+  });
+  app.post('/api/auth/login', express.json({ limit: '8kb' }), async (req, res) => {
+    const token = await auth.login(req.body?.username, req.body?.password, req.ip);
+    res.cookie(sessionCookie, token, { ...cookieOptions(req), maxAge: SESSION_DURATION });
+    res.json({ ok: true });
+  });
+  app.post('/api/auth/logout', async (req, res) => {
+    await auth.logout(sessionToken(req));
+    res.clearCookie(sessionCookie, cookieOptions(req)).json({ ok: true });
+  });
+  app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'Answer' }));
+  app.get('/api/data', (_req, res) => res.json(store.read()));
+
+  // Every API below this point requires a live management session.
+  app.use('/api', async (req, _res, next) => {
+    if (!await auth.authenticated(sessionToken(req))) throw new AppError(401, '请登录后再进行内容管理。');
+    next();
+  });
+  app.get('/api/admin/data', (_req, res) => res.json(store.read()));
+  app.use('/api', (req, _res, next) => {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
       const revision = req.get('if-match');
       if (revision === undefined) return next(new AppError(428, '缺少内容版本，请刷新页面后重试。'));
       if (!/^\d+$/.test(revision) || !Number.isSafeInteger(Number(revision))) {
@@ -42,9 +78,7 @@ export async function createApp({ dataDirectory = process.env.DATA_DIR || path.j
     }
     next();
   });
-  app.use(express.json({ limit: '5mb' }));
-  app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'Answer' }));
-  app.get('/api/data', (_req, res) => res.json(store.read()));
+  app.use('/api', express.json({ limit: '5mb' }));
 
   function directory(data, id) {
     const result = data.directories.find(entry => entry.id === id);
@@ -111,13 +145,22 @@ export async function createApp({ dataDirectory = process.env.DATA_DIR || path.j
   app.use('/api', (_req, _res, next) => next(new AppError(404, '接口不存在。')));
 
   app.use('/vendor/katex', express.static(path.join(root, 'node_modules/katex/dist'), { maxAge: '1d', index: false }));
-  app.get(['/admin', '/admin/'], (_req, res) => res.sendFile(path.join(publicDirectory, 'index.html')));
+  app.get('/admin', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!await auth.authenticated(sessionToken(req))) return res.redirect(302, '/login');
+    res.sendFile(path.join(publicDirectory, 'index.html'));
+  });
+  app.get('/login', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (await auth.authenticated(sessionToken(req))) return res.redirect(302, '/admin');
+    res.sendFile(path.join(publicDirectory, 'login.html'));
+  });
   app.use(express.static(publicDirectory, { maxAge: 0 }));
   app.use((_req, res) => res.status(404).type('text').send('页面不存在。请返回首页 / 。'));
   app.use((error, _req, res, _next) => {
     const status = error.type === 'entity.too.large' ? 413 : error.type === 'entity.parse.failed' ? 400 : error.status || 500;
-    if (status >= 500) console.error(error);
-    res.status(status).json({ error: status >= 500 ? '保存或读取失败，请检查服务器日志和磁盘空间。' :
+    if (status >= 500 && !(error instanceof AppError)) console.error(error);
+    res.status(status).json({ error: error instanceof AppError ? error.message : status >= 500 ? '保存或读取失败，请检查服务器日志和磁盘空间。' :
       status === 413 ? '内容过大，请将项目拆分后保存。' : error.type === 'entity.parse.failed' ? 'JSON 格式不正确。' : error.message });
   });
   return app;

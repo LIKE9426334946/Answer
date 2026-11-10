@@ -8,10 +8,10 @@
 - 手机端默认隐藏所有答案，点击「查看答案」展开，再次点击收起。
 - 项目描述、问题和答案支持 `$...$` 行内 LaTeX，也支持 `$$...$$` 独立公式。
 - 管理页提供实时学习预览；支持 `Ctrl+S` / `Cmd+S` 保存，未保存就离开时提醒。
-- 当前目录内可搜索项目名称、描述及问题。学习页没有管理入口，电脑端顶部可切换管理。
+- 当前目录内可搜索项目名称、描述及问题。电脑端顶部的「内容管理」可进入管理端。
 - 数据存储为服务器 `data/content.json`，手机和电脑共享。刷新页面不会丢失已保存内容。
 - 本地提供 KaTeX 脚本、样式和字体，浏览器不依赖外部 CDN。
-- 按个人使用方案，不使用数据库、登录或用户权限系统。`/admin` 是管理地址，不是权限隔离；能访问服务的人也能访问管理功能。
+- 学习页公开。管理页和所有内容写入接口都需要登录，唯一的管理账号为 `noart`。
 
 ### 页面预览
 
@@ -32,11 +32,22 @@ Nginx 监听公网 16001，并转发至 Node.js 的 3001。生产环境不要将
 
 ## 使用方法
 
-1. 在电脑上打开 `/admin`，创建目录，例如「线性代数」。
+首次安装或从旧版本升级后，在服务器终端设置自己的管理密码。
+
+```bash
+cd /opt/Answer
+npm run set-password
+```
+
+按提示输入两次密码，输入时屏幕不回显。用同一条命令可以重设密码，重设后所有设备需要重新登录。服务器尚未设置密码时，学习页仍然开放，管理端保持锁定。
+
+1. 在电脑上打开 `/admin`，用 `noart` 和自己的密码登录，然后创建目录，例如「线性代数」。
 2. 进入目录，点击「新建项目」，填写项目名称和问题描述（描述可以留空）。
 3. 填写第一组问题与答案，点击「添加一组问答」继续添加。每个项目需要至少一组完整问答。
 4. 在右侧预览中查看公式和展开效果，点击「保存项目」。
 5. 手机打开首页，进入目录和项目。先回忆答案，再点击展开。
+
+登录自成功起有效 30 天。刷新页面、重新打开浏览器或重启服务后都可以继续使用有效的登录。点击管理页右上角「退出登录」会注销当前浏览器的会话。在现有公网 HTTP 地址上，登录密码和会话 Cookie 以明文传输。通过 HTTPS 反向代理访问时，应用会给 Cookie 设置 `Secure` 属性。
 
 电脑修改并保存后，手机刷新页面即可读取最新内容。管理页的实时预览不等于自动保存。
 
@@ -71,6 +82,7 @@ git clone --branch main https://github.com/LIKE9426334946/Answer.git /opt/Answer
 cd /opt/Answer
 npm ci --omit=dev
 npm run check
+npm run set-password
 ```
 
 `/opt/Answer` 应为空目录；已有克隆请使用下方「更新项目」。若尚未安装 Node.js，请先安装符合版本要求的 Node.js，再继续。此项目不需要前端构建步骤。
@@ -126,6 +138,8 @@ bash deploy/install.sh
 
 脚本仅安装 Answer 自己的服务和站点配置，不修改其他项目配置。它不会修改安全组或自动开放防火墙端口。
 
+首次使用一键安装时，也需在项目目录执行一次 `npm run set-password`。
+
 ## 更新项目
 
 ```bash
@@ -139,9 +153,13 @@ systemctl --no-pager status Answer
 
 如部署配置有变化，再复制对应文件并执行 `systemctl daemon-reload` 或 `nginx -t`、`systemctl reload nginx`。运行数据目录被 Git 忽略，拉取代码不会覆盖已保存的目录、项目和问答。
 
+从没有登录功能的旧版本升级时，首次运行 `npm run set-password` 后即可登录。后续更新会沿用已设置的密码。
+
 ## 数据与备份
 
 首次启动自动创建空数据文件：`/opt/Answer/data/content.json`。所有学习数据都在 `data/`，备份这个目录即可。仓库不含用户数据或演示数据。
+
+`data/admin-credentials.json` 保存加盐的 scrypt 密码哈希。`data/admin-sessions.json` 保存会话令牌的摘要及到期时间。这两个文件随数据目录一起备份。
 
 ```bash
 tar -czf /root/Answer-data-$(date +%F-%H%M%S).tar.gz -C /opt/Answer data
@@ -159,6 +177,7 @@ tar -czf /root/Answer-data-$(date +%F-%H%M%S).tar.gz -C /opt/Answer data
 npm ci
 npm run check
 npm test
+npm run set-password
 npm start
 ```
 

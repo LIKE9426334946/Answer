@@ -59,11 +59,36 @@ function toast(message, error = false) {
   box.hidden = false;
   toastTimer = setTimeout(() => { box.hidden = true; }, error ? 6500 : 3000);
 }
-async function api(url, method = 'GET', body) {
+async function requestLogin() {
+  if (!state.data) {
+    location.replace('/login' + location.hash);
+    return;
+  }
+  const { createLoginForm } = await import('/login.js');
+  if (document.querySelector('#session-dialog')) return;
+  const dialog = document.createElement('dialog');
+  dialog.id = 'session-dialog';
+  dialog.setAttribute('aria-labelledby', 'session-title');
+  dialog.innerHTML = '<h2 id="session-title">请重新登录</h2><p class="modal-message">当前内容已保留，登录后可继续操作。</p>';
+  dialog.append(createLoginForm(() => {
+    dialog.close();
+    dialog.remove();
+    const saveError = document.querySelector('#save-error');
+    if (saveError) saveError.hidden = true;
+    toast(state.dirty ? '已重新登录，请再次保存项目。' : '已重新登录，可以继续操作。');
+  }));
+  dialog.insertAdjacentHTML('beforeend', '<a class="study-return" href="/">返回学习空间</a>');
+  dialog.addEventListener('cancel', event => event.preventDefault());
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector('input[type="password"]').focus();
+}
+
+async function api(url, method = 'GET', body, revision) {
   const options = { method, headers: { Accept: 'application/json' } };
   if (method !== 'GET') {
     options.headers['Content-Type'] = 'application/json';
-    options.headers['If-Match'] = String(state.data.revision);
+    if (revision !== undefined) options.headers['If-Match'] = String(revision);
     options.body = JSON.stringify(body || {});
   }
   let response;
@@ -72,11 +97,12 @@ async function api(url, method = 'GET', body) {
   let result;
   try { result = await response.json(); }
   catch { throw new Error('服务器返回异常，请稍后重试。'); }
+  if (response.status === 401 && isAdmin) await requestLogin();
   if (!response.ok) throw new Error(result.error || '操作失败，请重试。');
   return result;
 }
 async function mutation(url, method, body) {
-  const result = await api(url, method, body);
+  const result = await api(url, method, body, state.data.revision);
   state.data = result.data;
   return result.result;
 }
@@ -253,6 +279,13 @@ async function handleAction(button) {
   if (action === 'folder') return navigate(button.dataset.id, null);
   if (action === 'project') return navigate(state.folder, button.dataset.id);
   if (!isAdmin || state.saving) return;
+  if (action === 'logout') {
+    if (!await canLeave()) return;
+    await api('/api/auth/logout', 'POST', {});
+    state.dirty = false;
+    location.replace('/login');
+    return;
+  }
   if (action === 'toggle-preview') {
     state.previewHidden = !state.previewHidden;
     document.querySelector('#study-preview').hidden = state.previewHidden;
@@ -400,6 +433,9 @@ window.addEventListener('hashchange', async () => {
 window.addEventListener('beforeunload', event => {
   if (state.dirty || state.saving) { event.preventDefault(); event.returnValue = ''; }
 });
+window.addEventListener('pageshow', event => {
+  if (isAdmin && event.persisted) location.reload();
+});
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && state.draft) {
     event.preventDefault();
@@ -413,7 +449,8 @@ async function initialize() {
   document.querySelector('#workspace-label').textContent = isAdmin ? '内容管理工作台' : '个人学习空间';
   document.querySelector('#topbar-note').textContent = isAdmin ? '写下问题，留下思考' : '慢慢来，理解比记住更重要';
   try {
-    state.data = await api('/api/data');
+    state.data = await api(isAdmin ? '/api/admin/data' : '/api/data');
+    document.querySelector('.logout-button').hidden = !isAdmin;
     renderRoute();
     if (typeof window.renderMathInElement !== 'function') toast('公式组件未加载，请刷新页面；当前显示公式原文。', true);
   } catch (error) {

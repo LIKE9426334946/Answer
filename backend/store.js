@@ -56,26 +56,26 @@ function validateStoredData(data) {
   }
 }
 
+export async function writePrivateJson(filename, value) {
+  const temporary = path.join(path.dirname(filename), `.${path.basename(filename)}-${randomUUID()}.tmp`);
+  try {
+    const file = await open(temporary, 'wx', 0o600);
+    try {
+      await file.writeFile(JSON.stringify(value, null, 2) + '\n', 'utf8');
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await rename(temporary, filename);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
 export async function createStore(directory) {
   await mkdir(directory, { recursive: true });
   const filename = path.join(directory, 'content.json');
   let state;
-
-  async function persist(value) {
-    const temporary = path.join(directory, `.content-${randomUUID()}.tmp`);
-    try {
-      const file = await open(temporary, 'wx', 0o600);
-      try {
-        await file.writeFile(JSON.stringify(value, null, 2) + '\n', 'utf8');
-        await file.sync();
-      } finally {
-        await file.close();
-      }
-      await rename(temporary, filename);
-    } finally {
-      await rm(temporary, { force: true });
-    }
-  }
 
   try {
     state = JSON.parse(await readFile(filename, 'utf8'));
@@ -84,7 +84,7 @@ export async function createStore(directory) {
     // Never silently replace an existing damaged file with an empty database.
     if (error.code !== 'ENOENT') throw error;
     state = { version: 1, revision: 0, directories: [], projects: [] };
-    await persist(state);
+    await writePrivateJson(filename, state);
   }
 
   let queue = Promise.resolve();
@@ -98,7 +98,7 @@ export async function createStore(directory) {
         const next = structuredClone(state);
         const result = action(next);
         next.revision += 1;
-        await persist(next);
+        await writePrivateJson(filename, next);
         state = next;
         return { data: structuredClone(state), result };
       });
