@@ -4,6 +4,8 @@ const main = document.querySelector('#main');
 const sidebar = document.querySelector('#sidebar');
 const state = { data: null, folder: null, project: null, draft: null, dirty: false, saving: false, search: '', previewHidden: false };
 const previewHiddenKey = 'answer.previewHidden';
+const reviewKeyPrefix = 'answer.reviewed.';
+const unsavedReviewMarks = new Map();
 if (isAdmin) {
   try { state.previewHidden = localStorage.getItem(previewHiddenKey) === 'true'; }
   catch { /* The toggle still works when browser storage is unavailable. */ }
@@ -22,6 +24,7 @@ const icons = {
   trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
   book: '<path d="M12 6c-3-2-7-2-10-1v15c3-1 7-1 10 1 3-2 7-2 10-1V5c-3-1-7-1-10 1Zm0 0v15"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  circle: '<circle cx="12" cy="12" r="8"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   sort: '<path d="M4 6h10M4 12h7M4 18h4M18 4v15m-4-4 4 4 4-4"/>',
@@ -36,6 +39,38 @@ function rich(value) { return `<div class="rich-text">${esc(value)}</div>`; }
 function number(index) { return String(index + 1).padStart(2, '0'); }
 function folderById(id) { return state.data.directories.find(entry => entry.id === id); }
 function projectsIn(id) { return state.data.projects.filter(entry => entry.directoryId === id); }
+function isReviewed(id) {
+  if (unsavedReviewMarks.has(id)) return unsavedReviewMarks.get(id);
+  try { return localStorage.getItem(reviewKeyPrefix + id) === '1'; }
+  catch { return false; }
+}
+function updateReviewIndicators() {
+  const button = main.querySelector('[data-action="toggle-review"]');
+  if (button) {
+    const reviewed = isReviewed(button.dataset.id);
+    button.setAttribute('aria-pressed', String(reviewed));
+    button.innerHTML = reviewed ? `${icon('check')}已复习` : `${icon('circle')}未复习`;
+    return;
+  }
+  for (const row of main.querySelectorAll('.project-row')) {
+    const reviewed = isReviewed(row.dataset.id);
+    row.querySelector('.project-number').classList.toggle('is-reviewed', reviewed);
+    row.setAttribute('aria-description', reviewed ? '已复习' : '未复习');
+  }
+}
+function toggleReview(button) {
+  const id = button.dataset.id;
+  const reviewed = button.getAttribute('aria-pressed') !== 'true';
+  try {
+    if (reviewed) localStorage.setItem(reviewKeyPrefix + id, '1');
+    else localStorage.removeItem(reviewKeyPrefix + id);
+    unsavedReviewMarks.delete(id);
+  } catch {
+    unsavedReviewMarks.set(id, reviewed);
+    toast('本地存储不可用，复习标记仅在本次打开期间保留。', true);
+  }
+  updateReviewIndicators();
+}
 function date(value) { return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric' }).format(new Date(value)); }
 function route(folder, project) {
   const params = new URLSearchParams();
@@ -206,6 +241,7 @@ function renderProjectList() {
     return;
   }
   container.innerHTML = `<div class="project-list">${projects.map(project => `<button class="project-row" data-action="project" data-id="${project.id}"><span class="project-number">${number(all.indexOf(project))}</span><span class="project-title">${esc(project.title)}</span></button>`).join('')}</div>`;
+  updateReviewIndicators();
 }
 function questionsMarkup(questions, preview = false) {
   return questions.map((entry, index) => `<article class="question-card"><div class="question-top"><span class="question-label">问题 ${number(index)}</span><span class="question-dot"></span></div><div class="question-text">${rich(entry.question || (preview ? '在左侧输入问题…' : ''))}</div>
@@ -217,7 +253,12 @@ function renderStudy(project) {
   main.innerHTML = `${breadcrumb()}<div class="study-layout"><div class="study-content"><header class="study-heading"><span class="eyebrow">LEARN · THINK · UNDERSTAND</span><h1>${esc(project.title)}</h1><div class="study-meta"><span>${icon('book')}${project.questions.length} 组问答</span><span>更新于 ${esc(date(project.updatedAt))}</span></div></header>
     ${project.description ? `<section class="description-card"><div class="description-label"><span></span>问题描述</div>${rich(project.description)}</section>` : ''}
     <div class="questions-heading"><h2>思考与回答</h2><span id="revealed-count" aria-live="polite">已查看 0 / ${project.questions.length}</span></div><div class="questions-list">${questionsMarkup(project.questions)}</div>
-    <div class="study-end"><span>— 每一次回忆，都让理解更深一点 —</span><nav class="study-navigation" aria-label="项目导航"><button class="button secondary" data-action="folder" data-id="${project.directoryId}">${icon('back')}返回目录</button><button class="button primary" ${nextProject ? `data-action="project" data-id="${nextProject.id}"` : 'disabled title="已是当前目录的最后一个项目"'}>下一个${icon('arrow')}</button></nav></div></div><aside class="study-aside"><span class="small-spark">✳</span><h3>先想一想，<br>再揭晓答案。</h3><p>不急着往下翻。<br>试着在心里说出答案，<br>再看看自己的理解。</p><div class="aside-divider"></div><span class="aside-small">一次一个问题<br>一点一滴积累</span></aside></div>`;
+    <div class="study-end"><span>— 每一次回忆，都让理解更深一点 —</span><nav class="study-navigation" aria-label="项目导航">
+      <button class="button secondary" data-action="folder" data-id="${project.directoryId}">${icon('back')}返回目录</button>
+      <button type="button" class="button secondary review-toggle" data-action="toggle-review" data-id="${esc(project.id)}"></button>
+      <button class="button primary" ${nextProject ? `data-action="project" data-id="${nextProject.id}"` : 'disabled title="已是当前目录的最后一个项目"'}>下一个${icon('arrow')}</button>
+    </nav></div></div><aside class="study-aside"><span class="small-spark">✳</span><h3>先想一想，<br>再揭晓答案。</h3><p>不急着往下翻。<br>试着在心里说出答案，<br>再看看自己的理解。</p><div class="aside-divider"></div><span class="aside-small">一次一个问题<br>一点一滴积累</span></aside></div>`;
+  updateReviewIndicators();
   math(main);
 }
 function blankQuestion() { return { question: '', answer: '' }; }
@@ -283,6 +324,7 @@ async function handleAction(button) {
   if (action === 'home') return navigate(null, null);
   if (action === 'folder') return navigate(button.dataset.id, null);
   if (action === 'project') return navigate(state.folder, button.dataset.id);
+  if (action === 'toggle-review' && !isAdmin) return toggleReview(button);
   if (!isAdmin || state.saving) return;
   if (action === 'logout') {
     if (!await canLeave()) return;
@@ -457,6 +499,13 @@ window.addEventListener('beforeunload', event => {
 });
 window.addEventListener('pageshow', event => {
   if (isAdmin && event.persisted) location.reload();
+  else if (event.persisted) updateReviewIndicators();
+});
+window.addEventListener('storage', event => {
+  if (event.key === null) unsavedReviewMarks.clear();
+  else if (event.key.startsWith(reviewKeyPrefix)) unsavedReviewMarks.delete(event.key.slice(reviewKeyPrefix.length));
+  else return;
+  updateReviewIndicators();
 });
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && state.draft) {
