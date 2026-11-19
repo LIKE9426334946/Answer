@@ -24,6 +24,8 @@ const icons = {
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
+  sort: '<path d="M4 6h10M4 12h7M4 18h4M18 4v15m-4-4 4 4 4-4"/>',
+  grip: '<path d="M8 6h1m5 0h1M8 12h1m5 0h1M8 18h1m5 0h1" stroke-width="3"/>',
   up: '<path d="m5 15 7-7 7 7"/>',
   down: '<path d="m5 9 7 7 7-7"/>',
   close: '<path d="m6 6 12 12M18 6 6 12"/>'
@@ -101,8 +103,8 @@ async function api(url, method = 'GET', body, revision) {
   if (!response.ok) throw new Error(result.error || '操作失败，请重试。');
   return result;
 }
-async function mutation(url, method, body) {
-  const result = await api(url, method, body, state.data.revision);
+async function mutation(url, method, body, revision = state.data.revision) {
+  const result = await api(url, method, body, revision);
   state.data = result.data;
   return result.result;
 }
@@ -167,10 +169,13 @@ function breadcrumb() {
 function empty(title, message, action = '') {
   return `<div class="empty-state"><div class="empty-icon">${icon('book')}</div><h2>${esc(title)}</h2><p>${esc(message)}</p>${action}</div>`;
 }
+function sortButton(action, label, count) {
+  return count > 1 ? `<button type="button" class="button secondary desktop-only" data-action="${action}">${icon('sort')}${label}</button>` : '';
+}
 function renderOverview() {
   const questions = state.data.projects.reduce((sum, entry) => sum + entry.questions.length, 0);
   main.innerHTML = `<div class="stats-row"><span><strong>${state.data.directories.length}</strong> 个目录</span><i></i><span><strong>${state.data.projects.length}</strong> 个项目</span><i></i><span><strong>${questions}</strong> 组问答</span></div>
-    <section class="directory-section"><div class="section-heading"><h1>我的目录 <span>${String(state.data.directories.length).padStart(2, '0')}</span></h1>${isAdmin ? `<button class="button primary" data-action="add-folder">${icon('plus')}新建目录</button>` : ''}</div>
+    <section class="directory-section"><div class="section-heading"><h1>我的目录 <span>${String(state.data.directories.length).padStart(2, '0')}</span></h1>${isAdmin ? `<div class="heading-actions">${sortButton('sort-directories', '目录排序', state.data.directories.length)}<button class="button primary" data-action="add-folder">${icon('plus')}新建目录</button></div>` : ''}</div>
     ${state.data.directories.length ? `<div class="directory-grid">${state.data.directories.map((entry, index) => {
       const projects = projectsIn(entry.id);
       const total = projects.reduce((sum, project) => sum + project.questions.length, 0);
@@ -187,7 +192,7 @@ function renderFolder() {
   if (!folder) { renderMissing('这个目录不存在或已被删除。'); return; }
   const projects = projectsIn(folder.id);
   main.innerHTML = `${breadcrumb()}<section class="page-heading"><div><span class="eyebrow">${isAdmin ? 'YOUR COLLECTION' : 'TIME TO LEARN'}</span><h1>${esc(folder.name)}</h1><p>${projects.length} 个学习项目，${projects.reduce((sum, project) => sum + project.questions.length, 0)} 组值得思考的问答。</p></div>
-    ${isAdmin ? `<div class="heading-actions"><button class="icon-button outlined" data-action="rename-folder" aria-label="重命名目录" title="重命名目录">${icon('edit')}</button><button class="icon-button outlined" data-action="delete-folder" aria-label="删除目录" title="删除目录">${icon('trash')}</button><button class="button primary" data-action="new-project">${icon('plus')}新建项目</button></div>` : ''}</section>
+    ${isAdmin ? `<div class="heading-actions"><button class="icon-button outlined" data-action="rename-folder" aria-label="重命名目录" title="重命名目录">${icon('edit')}</button><button class="icon-button outlined" data-action="delete-folder" aria-label="删除目录" title="删除目录">${icon('trash')}</button>${sortButton('sort-projects', '项目排序', projects.length)}<button class="button primary" data-action="new-project">${icon('plus')}新建项目</button></div>` : ''}</section>
     <div class="section-heading project-list-heading"><h2>学习项目 <span>${String(projects.length).padStart(2, '0')}</span></h2>${projects.length ? `<label class="search-box">${icon('search')}<input id="project-search" type="search" placeholder="搜索本目录项目" aria-label="搜索本目录项目" value="${esc(state.search)}"></label>` : ''}</div><div id="project-list"></div>`;
   renderProjectList();
 }
@@ -297,7 +302,24 @@ async function handleAction(button) {
     if (!state.previewHidden) renderPreview();
     return;
   }
-  if (action === 'add-folder') {
+  if (action === 'sort-directories' || action === 'sort-projects') {
+    const folders = action === 'sort-directories';
+    const entries = folders ? state.data.directories : projectsIn(state.folder);
+    const items = entries.map(entry => ({ id: entry.id, label: folders ? entry.name : entry.title }));
+    const url = folders ? '/api/directories/order' : `/api/directories/${encodeURIComponent(state.folder)}/projects/order`;
+    const revision = state.data.revision;
+    const { showSortDialog } = await import('/sort-dialog.js');
+    if (!button.isConnected) return;
+    const saved = await showSortDialog({
+      title: button.textContent.trim(), items, icon,
+      save: ids => mutation(url, 'PUT', { ids }, revision)
+    });
+    if (saved) {
+      renderRoute();
+      main.querySelector(`[data-action="${action}"]`)?.focus({ preventScroll: true });
+      toast('顺序已保存，手机端刷新即可查看');
+    }
+  } else if (action === 'add-folder') {
     if (!(await canLeave())) return;
     const name = await modal({ title: '创建一个新目录', value: '', confirm: '创建目录' });
     if (!name) return;

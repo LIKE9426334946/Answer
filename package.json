@@ -9,7 +9,7 @@
     "start": "node backend/server.js",
     "dev": "node backend/dev.js",
     "set-password": "node backend/set-password.js",
-    "check": "node --check backend/server.js && node --check backend/store.js && node --check backend/admin-auth.js && node --check backend/set-password.js && node --check backend/dev.js && node --check public/app.js && node --check public/login.js",
+    "check": "node --check backend/server.js && node --check backend/store.js && node --check backend/admin-auth.js && node --check backend/set-password.js && node --check backend/dev.js && node --check public/app.js && node --check public/login.js && node --check public/sort-dialog.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

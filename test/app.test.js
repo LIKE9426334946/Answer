@@ -86,6 +86,53 @@ test('directory/project CRUD, order, LaTeX, movement, durable reload and cascade
   assert.deepEqual(JSON.parse(await readFile(path.join(directory, 'content.json'), 'utf8')), response.body.data);
 });
 
+test('manual order is durable, scoped to a folder and shared with anonymous study clients', async t => {
+  const { request, directory, base } = await fixture(t);
+  let revision = 0;
+  async function create(url, body) {
+    const response = await request(url, 'POST', body, revision);
+    assert.equal(response.status, 201);
+    revision = response.body.data.revision;
+    return response.body.result;
+  }
+  const a = await create('/api/directories', { name: 'A' });
+  const b = await create('/api/directories', { name: 'B' });
+  const a1 = await create('/api/projects', { ...sample(a.id), title: 'A1' });
+  const b1 = await create('/api/projects', { ...sample(b.id), title: 'B1' });
+  const a2 = await create('/api/projects', { ...sample(a.id), title: 'A2' });
+  const b2 = await create('/api/projects', { ...sample(b.id), title: 'B2' });
+
+  const foldersUrl = '/api/directories/order';
+  const projectsUrl = `/api/directories/${a.id}/projects/order`;
+  const originalProjects = [a1, b1, a2, b2];
+  for (const ids of [[a.id], [a.id, a.id], [a.id, 'missing'], 'invalid']) {
+    assert.equal((await request(foldersUrl, 'PUT', { ids }, revision)).status, 400);
+  }
+  const folders = await request(foldersUrl, 'PUT', { ids: [b.id, a.id] }, revision);
+  assert.equal(folders.status, 200);
+  assert.deepEqual(folders.body.data.directories, [b, a]);
+  assert.deepEqual(folders.body.data.projects, originalProjects);
+  assert.equal((await request(projectsUrl, 'PUT', { ids: [a2.id, a1.id] }, revision)).status, 409);
+  revision = folders.body.data.revision;
+  for (const ids of [[a2.id], [a2.id, a2.id], [a2.id, b1.id]]) {
+    assert.equal((await request(projectsUrl, 'PUT', { ids }, revision)).status, 400);
+  }
+  assert.equal((await request('/api/directories/missing/projects/order', 'PUT', { ids: [] }, revision)).status, 404);
+  const projects = await request(projectsUrl, 'PUT', { ids: [a2.id, a1.id] }, revision);
+  assert.equal(projects.status, 200);
+  const published = await (await fetch(base + '/api/data')).json();
+  assert.deepEqual(published.directories, [b, a]);
+  assert.deepEqual(published.projects, [a2, b1, a1, b2]);
+  assert.deepEqual((await createStore(directory)).read(), published);
+
+  revision = published.revision;
+  const a3 = await create('/api/projects', { ...sample(a.id), title: 'A3' });
+  const moved = await request(`/api/projects/${b1.id}`, 'PUT', { ...b1, directoryId: a.id }, revision);
+  assert.equal(moved.status, 200);
+  assert.deepEqual(moved.body.data.projects.filter(entry => entry.directoryId === a.id).map(entry => entry.id),
+    [a2.id, a1.id, a3.id, b1.id]);
+});
+
 test('concurrent saves and stale clients cannot overwrite each other; queue recovers after errors', async t => {
   const { request } = await fixture(t);
   const results = await Promise.all([
@@ -119,7 +166,7 @@ test('invalid inputs, unknown IDs, missing versions and cross-site writes are re
 
 test('serves desktop/mobile UI and local math assets, keeps user data private from static routes', async t => {
   const { base, cookie } = await fixture(t);
-  for (const url of ['/', '/admin', '/admin/', '/styles.css', '/app.js', '/favicon.svg', '/vendor/katex/katex.min.css', '/vendor/katex/katex.min.js', '/vendor/katex/contrib/auto-render.min.js', '/vendor/katex/fonts/KaTeX_Main-Regular.woff2']) {
+  for (const url of ['/', '/admin', '/admin/', '/styles.css', '/app.js', '/sort-dialog.js', '/favicon.svg', '/vendor/katex/katex.min.css', '/vendor/katex/katex.min.js', '/vendor/katex/contrib/auto-render.min.js', '/vendor/katex/fonts/KaTeX_Main-Regular.woff2']) {
     const response = await fetch(base + url, { headers: { Cookie: cookie }, redirect: 'manual' });
     assert.equal(response.status, 200, url);
     assert.ok(response.headers.get('content-security-policy')?.includes("script-src 'self'"));
@@ -146,7 +193,8 @@ test('anonymous study stays public, admin pages and every content mutation requi
   assert.equal((await request('/api/admin/data')).status, 401);
   for (const [method, url] of [
     ['POST', '/api/directories'], ['PATCH', '/api/directories/test'], ['DELETE', '/api/directories/test'],
-    ['POST', '/api/projects'], ['PUT', '/api/projects/test'], ['DELETE', '/api/projects/test']
+    ['POST', '/api/projects'], ['PUT', '/api/projects/test'], ['DELETE', '/api/projects/test'],
+    ['PUT', '/api/directories/order'], ['PUT', '/api/directories/test/projects/order']
   ]) {
     assert.equal((await request(url, method, { name: '未登录' })).status, 401);
   }

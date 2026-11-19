@@ -97,6 +97,29 @@ export async function createApp({ dataDirectory = configuredDataDirectory(), now
     }
     return name;
   }
+  function orderedEntries(entries, ids) {
+    const byId = new Map(entries.map(entry => [entry.id, entry]));
+    if (!Array.isArray(ids) || ids.length !== entries.length || new Set(ids).size !== ids.length ||
+        ids.some(id => !byId.has(id))) {
+      throw new AppError(400, '排序列表必须包含当前列表的全部条目，每项恰好一次。');
+    }
+    return ids.map(id => byId.get(id));
+  }
+  app.put('/api/directories/order', async (req, res) => {
+    res.json(await store.mutate(req.revision, data => {
+      data.directories = orderedEntries(data.directories, req.body?.ids);
+    }));
+  });
+  app.put('/api/directories/:id/projects/order', async (req, res) => {
+    res.json(await store.mutate(req.revision, data => {
+      const folder = directory(data, req.params.id);
+      const inFolder = entry => entry.directoryId === folder.id;
+      const ordered = orderedEntries(data.projects.filter(inFolder), req.body?.ids);
+      // Replace only this folder's slots in the shared projects array.
+      let index = 0;
+      data.projects = data.projects.map(entry => inFolder(entry) ? ordered[index++] : entry);
+    }));
+  });
   app.post('/api/directories', async (req, res) => {
     const result = await store.mutate(req.revision, data => {
       const entry = { id: randomUUID(), name: directoryName(data, req.body?.name), createdAt: new Date().toISOString() };
@@ -132,6 +155,10 @@ export async function createApp({ dataDirectory = configuredDataDirectory(), now
     res.json(await store.mutate(req.revision, data => {
       const entry = project(data, req.params.id);
       directory(data, req.body?.directoryId);
+      if (entry.directoryId !== req.body.directoryId) {
+        data.projects.splice(data.projects.indexOf(entry), 1);
+        data.projects.push(entry);
+      }
       Object.assign(entry, projectFields(req.body), { directoryId: req.body.directoryId, updatedAt: new Date().toISOString() });
       return entry;
     }));
